@@ -28,7 +28,7 @@ def read_health():
 @app.get("/summary")
 def get_summary(month: str):
     # This is mock data, as specified for Day 2 [cite: 59]
-    # You will replace this with real database queries later.
+    # We will replace this with real database queries later.
     mock_response = {
         "month": month, # Use the month from the query parameter
         "totals": { "income": 5000, "expense": 2250.75, "net": 2749.25 },
