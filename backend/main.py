@@ -1,4 +1,7 @@
-from fastapi import FastAPI
+import csv
+import io
+import hashlib
+from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 # Initialize the FastAPI app
@@ -46,3 +49,62 @@ def get_summary(month: str):
         ]
     }
     return mock_response
+
+@app.post("/import/csv")
+async def import_csv(file: UploadFile = File(...)):
+    imported_count = 0
+    skipped_count = 0
+    errors_count = 0
+    
+    # Use a set to track hashes for the current upload to avoid duplicates within the same file
+    processed_hashes = set()
+
+    # Read the uploaded file content
+    contents = await file.read()
+    # Use io.StringIO to treat the byte string as a text file
+    file_stream = io.StringIO(contents.decode("utf-8"))
+    
+    reader = csv.DictReader(file_stream)
+    
+    for row in reader:
+        try:
+            amount = 0.0
+            
+            # --- REVISED LOGIC: Handle amounts more robustly ---
+            if row.get('amount') and row['amount'].strip():
+                # Clean and convert the primary amount column
+                amount_str = row['amount'].strip().replace('$', '').replace(',', '')
+                amount = float(amount_str)
+            elif row.get('debit') and row['debit'].strip():
+                # Clean, convert, and ensure the value is negative
+                debit_str = row['debit'].strip().replace('$', '').replace(',', '')
+                amount = -abs(float(debit_str))
+            elif row.get('credit') and row['credit'].strip():
+                # Clean, convert, and ensure the value is positive
+                credit_str = row['credit'].strip().replace('$', '').replace(',', '')
+                amount = abs(float(credit_str))
+            else:
+                # If no amount can be found, this row is invalid
+                raise ValueError("No valid amount, debit, or credit value found in row")
+
+            date = row.get('date', '')
+            description = row.get('description', '').strip().lower()
+
+            # --- Create deduplication hash ---
+            amount_in_cents = int(amount * 100)
+            hash_input = f"{date}|{description}|{amount_in_cents}"
+            dedupe_hash = hashlib.md5(hash_input.encode('utf-8')).hexdigest()
+
+            # --- Check for duplicates ---
+            if dedupe_hash in processed_hashes:
+                skipped_count += 1
+                continue
+            
+            processed_hashes.add(dedupe_hash)
+            imported_count += 1
+
+        except (ValueError, KeyError) as e:
+            # Catches errors from missing columns or bad data
+            errors_count += 1
+
+    return {"imported": imported_count, "skipped": skipped_count, "errors": errors_count}
