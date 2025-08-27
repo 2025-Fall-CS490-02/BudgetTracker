@@ -148,7 +148,7 @@ export default function App() {
               accept=".csv,text/csv"
               onChange={(e) => setFile(e.target.files?.[0] || null)}
             />
-            <button className="card" type="submit" disabled={importing} style={{ cursor: "pointer" }}>
+            <button className="card" type="submit" disabled={!file || importing} style={{ cursor: "pointer" }}>
               {importing ? "Uploading..." : "Upload"}
             </button>
           </form>
