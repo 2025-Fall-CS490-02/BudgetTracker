@@ -20,6 +20,7 @@ origins = [
     "http://localhost:5173",
     "https://budgettracker-unfg.onrender.com",
     "https://budget-tracker-rho-eight.vercel.app",
+    "https://budget-tracker-nxbvxm7aa-ezequiels-projects-0cc64712.vercel.app",
 ]
 
 # Add the CORS middleware to the app
@@ -102,7 +103,7 @@ async def import_csv(file: UploadFile = File(...)):
 
             date = row.get('date', '')
             description = row.get('description', '').strip().lower()
-            
+
             # --- Create deduplication hash ---
             amount_in_cents = int(amount * 100)
             hash_input = f"{date}|{description}|{amount_in_cents}"
