@@ -81,6 +81,27 @@ async def import_csv(file: UploadFile = File(...)):
     for row in reader:
         try:
             # ... (keep your robust amount parsing logic) ...
+            amount = 0.0
+            
+            # --- REVISED LOGIC: Handle amounts more robustly ---
+            if row.get('amount') and row['amount'].strip():
+                # Clean and convert the primary amount column
+                amount_str = row['amount'].strip().replace('$', '').replace(',', '')
+                amount = float(amount_str)
+            elif row.get('debit') and row['debit'].strip():
+                # Clean, convert, and ensure the value is negative
+                debit_str = row['debit'].strip().replace('$', '').replace(',', '')
+                amount = -abs(float(debit_str))
+            elif row.get('credit') and row['credit'].strip():
+                # Clean, convert, and ensure the value is positive
+                credit_str = row['credit'].strip().replace('$', '').replace(',', '')
+                amount = abs(float(credit_str))
+            else:
+                # If no amount can be found, this row is invalid
+                raise ValueError("No valid amount, debit, or credit value found in row")
+
+            date = row.get('date', '')
+            description = row.get('description', '').strip().lower()
             
             # --- Create deduplication hash ---
             amount_in_cents = int(amount * 100)
