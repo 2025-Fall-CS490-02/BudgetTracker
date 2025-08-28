@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 
 # Initialize the Firestore client
-# It will automatically find your credentials from the environment variable
+# It will automatically find our credentials from the environment variable
 db = firestore.Client()
 
 # Initialize the FastAPI app
@@ -40,30 +40,57 @@ def read_health():
 # Define the /summary endpoint
 @app.get("/summary")
 def get_summary(month: str):
-    # This is mock data, as specified for Day 2 [cite: 59]
-    # We will replace this with real database queries later.
-    mock_response = {
-        "month": month, # Use the month from the query parameter
-        "totals": { "income": 5000, "expense": 2250.75, "net": 2749.25 },
-        "byCategory": {
-            "Food": 850.50,
-            "Rent": 1200,
-            "Utilities": 150.25,
-            "Transport": 50
+    # Step 1: Query Firestore
+    # Get a reference to the 'transactions' collection
+    transactions_ref = db.collection('transactions')
+    
+    # Create a query to get all documents for the specified month
+    query = transactions_ref.where("month", "==", month)
+    docs = query.stream()
+
+    # Step 2: Process the data
+    total_inflow = 0
+    total_outflow = 0
+    by_category = {}
+
+    for doc in docs:
+        transaction = doc.to_dict()
+        amount_cents = transaction.get("amount_cents", 0)
+        
+        if amount_cents > 0:
+            total_inflow += amount_cents
+        else:
+            total_outflow += amount_cents # amount is already negative
+            category = transaction.get("category", "Uncategorized")
+            # Add the expense to its category (use positive value for summing)
+            by_category[category] = by_category.get(category, 0) + abs(amount_cents)
+
+    # Convert from cents to dollars for the response
+    total_inflow_dollars = total_inflow / 100
+    total_outflow_dollars = abs(total_outflow / 100) # Show as a positive number
+    net_dollars = (total_inflow + total_outflow) / 100
+    
+    by_category_dollars = {cat: amount / 100 for cat, amount in by_category.items()}
+
+    # Step 3: Return the response in the correct format
+    summary_data = {
+        "month": month,
+        "totals": {
+            "income": total_inflow_dollars,
+            "expense": total_outflow_dollars,
+            "net": net_dollars
         },
-        "daily": [
-            {"date": f"{month}-01", "total": 1200},
-            {"date": f"{month}-03", "total": 55.25},
-            {"date": f"{month}-05", "total": 150.25},
-            {"date": f"{month}-10", "total": 795.25}
-        ]
+        "byCategory": by_category_dollars,
+        # Daily data can be a future enhancement; return an empty list for now
+        "daily": [] 
     }
-    return mock_response
+    
+    return summary_data
 
 
 @app.post("/import/csv")
 async def import_csv(file: UploadFile = File(...)):
-    # ... (keep your counters and file reading logic) ...
+    # Initialize counters
     imported_count = 0
     skipped_count = 0
     errors_count = 0
@@ -81,10 +108,10 @@ async def import_csv(file: UploadFile = File(...)):
     
     for row in reader:
         try:
-            # ... (keep your robust amount parsing logic) ...
+            # INITIAL LOGIC: Handle amounts
             amount = 0.0
             
-            # --- REVISED LOGIC: Handle amounts more robustly ---
+            # REVISED LOGIC: Handle amounts more robustly
             if row.get('amount') and row['amount'].strip():
                 # Clean and convert the primary amount column
                 amount_str = row['amount'].strip().replace('$', '').replace(',', '')
@@ -104,18 +131,18 @@ async def import_csv(file: UploadFile = File(...)):
             date = row.get('date', '')
             description = row.get('description', '').strip().lower()
 
-            # --- Create deduplication hash ---
+            # Create deduplication hash
             amount_in_cents = int(amount * 100)
             hash_input = f"{date}|{description}|{amount_in_cents}"
             dedupe_hash = hashlib.md5(hash_input.encode('utf-8')).hexdigest()
 
-            # --- Check for duplicates IN FIRESTORE ---
+            # Check for duplicates IN FIRESTORE
             doc_ref = transactions_ref.document(dedupe_hash) # [cite: 126]
             if doc_ref.get().exists:
                 skipped_count += 1
                 continue
             
-            # --- Prepare data and write to Firestore ---
+            # Prepare data and write to Firestore
             transaction_data = {
                 "date_iso": date, # [cite: 127]
                 "month": date[:7], # Extracts "YYYY-MM" [cite: 127]
