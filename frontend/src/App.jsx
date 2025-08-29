@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchSummary, uploadCsv } from "./lib/api"; // now includes uploadCsv
+import { fetchSummary, uploadCsv } from "./lib/api";
 import "./App.css";
 
 function thisMonth() {
@@ -7,8 +7,23 @@ function thisMonth() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; // YYYY-MM
 }
 
+// YYYY-MM -> Date (first of month)
+function monthToDate(m) {
+  const [y, mm] = m.split("-").map(Number);
+  return new Date(y, mm - 1, 1);
+}
+
+// add n months (n can be negative) to YYYY-MM
+function addMonths(m, n) {
+  const d = monthToDate(m);
+  d.setMonth(d.getMonth() + n);
+  const y = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${y}-${mm}`;
+}
+
 export default function App() {
-  const [month] = useState(thisMonth());
+  const [month, setMonth] = useState(thisMonth());
   const [data, setData] = useState(null);        // { month, totals, byCategory, daily }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -46,7 +61,10 @@ export default function App() {
       setImporting(true);
       const res = await uploadCsv(file);
       setImportResult(res);
-      // optional: re-fetch summary after import to refresh chart & numbers
+
+      // Optional UX: if your CSV clearly targets a later month than the current selection,
+      // let the user jump there quickly. If your backend ever returns a {month} in res,
+      // you could auto-switch: if (res.month) setMonth(res.month)
       const refreshed = await fetchSummary(month);
       setData(refreshed);
     } catch (err) {
@@ -60,13 +78,39 @@ export default function App() {
   const catEntries = Object.entries(data?.byCategory || {}); // [["Food",123], ...]
   const chartData = catEntries.map(([category, amount]) => ({ category, amount: Number(amount) || 0 }));
   const max = chartData.reduce((m, d) => Math.max(m, d.amount), 0) || 1;
-  const W = 640, H = 260, P = 30; // width, height, padding
+  const W = 640, H = 260, P = 30;
   const barW = chartData.length ? (W - P * 2) / chartData.length : 0;
 
   return (
     <div className="container">
       <h1>Budget Tracker</h1>
-      <p className="subtle">Month: {month}</p>
+
+      {/* Month controls */}
+      <div className="list" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <button className="card" onClick={() => setMonth((m) => addMonths(m, -1))} aria-label="Previous month">
+          ◀ Prev
+        </button>
+
+        <label className="card" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span className="label">Month</span>
+          <input
+            type="month"
+            value={month}
+            onChange={(e) => setMonth(e.target.value)}
+            style={{ padding: "0.4rem" }}
+          />
+        </label>
+
+        <button className="card" onClick={() => setMonth((m) => addMonths(m, 1))} aria-label="Next month">
+          Next ▶
+        </button>
+
+        <button className="card" onClick={() => setMonth(thisMonth())} aria-label="Jump to current month">
+          Today
+        </button>
+      </div>
+
+      <p className="subtle">Selected: {month}</p>
 
       {loading && <p>Loading…</p>}
       {error && <p className="error">Error: {error}</p>}
@@ -96,14 +140,9 @@ export default function App() {
           ) : (
             <div style={{ overflowX: "auto" }}>
               <svg width={W} height={H} role="img" aria-label="Bar chart of spending by category">
-                {/* y-axis labels (0 and max) */}
                 <text x={4} y={H - P} fontSize="10">{fmt.format(0)}</text>
                 <text x={4} y={P + 10} fontSize="10">{fmt.format(max)}</text>
-
-                {/* baseline */}
                 <line x1={P} y1={H - P} x2={W - P} y2={H - P} stroke="#ddd" />
-
-                {/* bars */}
                 {chartData.map((d, i) => {
                   const h = Math.round((d.amount / max) * (H - P * 2));
                   const x = P + i * barW + barW * 0.1;
@@ -112,11 +151,9 @@ export default function App() {
                   return (
                     <g key={d.category}>
                       <rect x={x} y={y} width={w} height={h} fill="#69b3a2" />
-                      {/* category label */}
                       <text x={x + w / 2} y={H - P + 12} fontSize="10" textAnchor="middle">
                         {d.category.length > 10 ? d.category.slice(0, 10) + "…" : d.category}
                       </text>
-                      {/* value on top */}
                       <text x={x + w / 2} y={y - 4} fontSize="10" textAnchor="middle">
                         {fmt.format(d.amount)}
                       </text>
@@ -127,7 +164,7 @@ export default function App() {
             </div>
           )}
 
-          {/* category list (your original list stays) */}
+          {/* category list */}
           <ul className="list">
             {Object.entries(data.byCategory || {}).map(([cat, amt]) => (
               <li key={cat} className="row">
