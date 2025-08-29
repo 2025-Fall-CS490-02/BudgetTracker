@@ -148,7 +148,7 @@ async def import_csv(file: UploadFile = File(...)):
                 "month": date[:7], # Extracts "YYYY-MM" [cite: 127]
                 "description": description, # [cite: 127]
                 "amount_cents": amount_in_cents, # [cite: 127]
-                "category": "Uncategorized", # Default category [cite: 127]
+                "category": description, # Default category [cite: 127]
                 "created_at": datetime.datetime.now(datetime.timezone.utc) # [cite: 127]
             }
             doc_ref.set(transaction_data) # Write to Firestore
